@@ -25,6 +25,9 @@ package org.wildfly.plugins.componentmatrix;
 
 import static org.junit.Assert.assertEquals;
 
+import java.util.Collection;
+import java.util.Collections;
+
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.DependencyManagement;
 import org.apache.maven.model.Model;
@@ -38,7 +41,7 @@ public class PomDependencyVersionsTransformerTest {
         Dependency dependency = createDependency("groupId", "artifactId", "version");
         addDependency(pomModel, dependency);
 
-        Model transformedModel = transformer.transformPomModel(pomModel);
+        Model transformedModel = transformer.transformPomModel(pomModel, Collections.emptyMap());
 
         assertEquals(1, transformedModel.getProperties().size());
         String versionKey = createKey(dependency);
@@ -55,7 +58,7 @@ public class PomDependencyVersionsTransformerTest {
         Dependency dependency2 = createDependency("groupId", "artifactId2", "version2");
         addDependency(pomModel, dependency2);
 
-        Model transformedModel = transformer.transformPomModel(pomModel);
+        Model transformedModel = transformer.transformPomModel(pomModel, Collections.emptyMap());
 
         assertEquals(2, transformedModel.getProperties().size());
         String versionKey1 = createKeyIncludingArtifactId(dependency1);
@@ -65,6 +68,25 @@ public class PomDependencyVersionsTransformerTest {
         String versionKey2 = createKeyIncludingArtifactId(dependency2);
         assertEquals(dependency2.getVersion(), transformedModel.getProperties().get(versionKey2));
         assertEquals("${" + versionKey2 + "}", transformedModel.getDependencyManagement().getDependencies().get(1).getVersion());
+    }
+
+    @Test
+    public void testDependencyVersionMerge() throws Exception {
+        PomDependencyVersionsTransformer transformer = new PomDependencyVersionsTransformer();
+        Model pomModel = createPomModel();
+        Dependency dependency1 = createDependency("org.myorg.group1", "artifactId1", "version1");
+        addDependency(pomModel, dependency1);
+        Dependency dependency2 = createDependency("org.myorg.group2", "artifactId2", "version1");
+        addDependency(pomModel, dependency2);
+
+        final String mergedName = "version.myorg";
+        Model transformedModel = transformer.transformPomModel(pomModel, Collections.singletonMap(mergedName, "version\\.org\\.myorg\\..*"));
+
+        assertEquals(1, transformedModel.getProperties().size());
+        assertEquals(dependency1.getVersion(), transformedModel.getProperties().get(mergedName));
+        assertEquals("${" + mergedName + "}", transformedModel.getDependencyManagement().getDependencies().get(0).getVersion());
+
+        assertEquals("${" + mergedName + "}", transformedModel.getDependencyManagement().getDependencies().get(1).getVersion());
     }
 
     // FIXME one groupId with same versions, but configuration requires property for given artifactId

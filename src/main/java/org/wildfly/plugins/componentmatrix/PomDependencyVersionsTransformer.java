@@ -23,11 +23,15 @@
 
 package org.wildfly.plugins.componentmatrix;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.DependencyManagement;
@@ -35,8 +39,36 @@ import org.apache.maven.model.Model;
 
 class PomDependencyVersionsTransformer {
 
+    static class NameMapper {
+        private final Map<String, List<Pattern>> namePatternMap;
 
-    public Model transformPomModel(Model model) {
+        NameMapper(Map<String, String> mergedProperties) {
+            this.namePatternMap = new TreeMap<>();
+            for (Entry<String, String> en : mergedProperties.entrySet()) {
+                final List<Pattern> list = new ArrayList<>();
+                for (String regex : en.getValue().split(",")) {
+                    regex = regex.trim();
+                    list.add(Pattern.compile(regex));
+                }
+                namePatternMap.put(en.getKey(), list);
+            }
+        }
+
+        public String mapName(String name) {
+            for (Entry<String, List<Pattern>> en : namePatternMap.entrySet()) {
+                for (Pattern pat : en.getValue()) {
+                    if (pat.matcher(name).matches()) {
+                        return en.getKey();
+                    }
+                }
+            }
+            return name;
+        }
+    }
+
+
+    public Model transformPomModel(Model model, Map<String, String> mergedProperties) {
+        final NameMapper nameMapper = new NameMapper(mergedProperties);
         Model pomModel = model.clone();
         DependencyManagement depMgmt = pomModel.getDependencyManagement();
         Map<String, String> groupIdArtifactIdVersions = new TreeMap<>();
@@ -63,18 +95,22 @@ class PomDependencyVersionsTransformer {
             String groupId = groupVersion.getKey();
             Set<String> artifactIds = groupIdArtifactIds.get(groupId);
             if (artifactIds.size() == 1 || allArtifactsInGroupHaveSameVersion(groupId, groupIdArtifactIdVersions, artifactIds)) {
-                String propertyName = "version." + groupId;
-                properties.setProperty(propertyName, groupVersion.getValue());
+                String origName = "version." + groupId;
+                String mappedName = nameMapper.mapName(origName);
+                final String currentVersion = groupVersion.getValue();
+                setVersion(properties, origName, mappedName, currentVersion);
                 for (String artifactId : artifactIds) {
                     String groupIdArtifactId = groupId + ":" + artifactId;
-                    groupIdArtifactIdPropertyNames.put(groupIdArtifactId, propertyName);
+                    groupIdArtifactIdPropertyNames.put(groupIdArtifactId, mappedName);
                 }
             } else {
                 for (String artifactId : artifactIds) {
                     String groupIdArtifactId = groupId + ":" + artifactId;
-                    String propertyName = "version." + groupId + "." + artifactId;
-                    groupIdArtifactIdPropertyNames.put(groupIdArtifactId, propertyName);
-                    properties.setProperty(propertyName, groupIdArtifactIdVersions.get(groupIdArtifactId));
+                    String origName = "version." + groupId + "." + artifactId;
+                    String mappedName = nameMapper.mapName(origName);
+                    final String currentVersion = groupIdArtifactIdVersions.get(groupIdArtifactId);
+                    setVersion(properties, origName, mappedName, currentVersion);
+                    groupIdArtifactIdPropertyNames.put(groupIdArtifactId, mappedName);
                 }
             }
         }
@@ -86,6 +122,18 @@ class PomDependencyVersionsTransformer {
             dependency.setVersion("${" + propertyName + "}");
         }
         return pomModel;
+    }
+
+    static void setVersion(Properties properties, String origName, String mappedName, String currentVersion) {
+        final String knownVersion = properties.getProperty(mappedName);
+        if (knownVersion != null && !knownVersion.equals(currentVersion)) {
+            throw new IllegalArgumentException(String.format(
+                    "Cannot merge property [%s] with property [%s] because they have distinct values [%s] and [%s] respectively. Fix <%s> under <mergedProperties>",
+                    origName, mappedName, currentVersion, knownVersion, mappedName));
+        } else {
+            properties.setProperty(mappedName, currentVersion);
+        }
+
     }
 
     private boolean allArtifactsInGroupHaveSameVersion(String groupId, Map<String, String> groupIdArtifactIdVersions, Set<String> artifactIds) {

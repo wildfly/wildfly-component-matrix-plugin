@@ -143,6 +143,38 @@ public class BuildBomMojo
     @Parameter
     private Set<String> includeProfiles;
 
+    /** A map from target property names to comma separated list of regular expressions. It can be used to merge
+     * multiple properties into one. Say, that the mojo would normally produce something like
+     *
+     * <pre>
+     * &lt;properties&gt;
+     *     &lt;version.com.fasterxml.jackson.core&gt;2.9.5&lt;/version.com.fasterxml.jackson.core&gt;
+     *     &lt;version.com.fasterxml.jackson.datatype&gt;2.9.5&lt;/version.com.fasterxml.jackson.datatype&gt;
+     *     &lt;version.com.fasterxml.jackson.jaxrs&gt;2.9.5&lt;/version.com.fasterxml.jackson.jaxrs&gt;
+     *     &lt;version.com.fasterxml.jackson.module&gt;2.9.5&lt;/version.com.fasterxml.jackson.module&gt;
+     * &lt;properties&gt;
+     * </pre>
+     *
+     * which we want to collapse into a single property
+     *
+     * <pre>
+     * &lt;properties&gt;
+     *     &lt;version.com.fasterxml.jackson&gt;2.9.5&lt;/version.com.fasterxml.jackson&gt;
+     * &lt;properties&gt;
+     * </pre>
+     *
+     * We can achieve that by the following configuration:
+     *
+     * <pre>
+     * &lt;mergedProperties&gt;
+     *     &lt;version.com.fasterxml.jackson&gt;version\.com\.fasterxml\.jackson\..*&lt;/version.com.fasterxml.jackson&gt;
+     * &lt;mergedProperties&gt;
+     * </pre>
+     *
+     * */
+    @Parameter
+    private Map<String, String> mergedProperties;
+
     /**
      * The current project
      */
@@ -172,7 +204,7 @@ public class BuildBomMojo
         Model model = initializeModel();
         addDependencyManagement(model);
 
-        model = versionsTransformer.transformPomModel(model);
+        model = versionsTransformer.transformPomModel(model, mergedProperties);
         getLog().debug("Dependencies versions converted to properties");
 
         final File file = new File(mavenProject.getBuild().getDirectory(), outputFilename);
