@@ -235,7 +235,7 @@ public class BuildBomMojo
         MavenProject current = mavenProject;
         while (current != null) {
             Model currModel = current.getModel();
-            if (currModel != null) {
+            if (includeProfiles != null && currModel != null) {
                 for ( Profile profile : currModel.getProfiles() ) {
                     if (includeProfiles.contains(profile.getId()) && !addedProfiles.contains(profile.getId())) {
                         profiles.add(profile);
